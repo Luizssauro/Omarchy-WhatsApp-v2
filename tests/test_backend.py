@@ -1084,6 +1084,29 @@ class BackendTests(unittest.TestCase):
             text = self.backend.messages("team@g.us")["messages"][0]["text"]
         self.assertEqual(text, "@999999999999999 hello")
 
+    def test_the_chat_list_preview_names_a_received_lid_mention(self) -> None:
+        # The chat rail's preview is the same raw text a @mention message
+        # carries, so it needs the same number -> name resolution.
+        self._insert_mention("@123456789012345 check this out")
+        with self._resolve_lid("123456789012345@lid", self.MENTIONED_PHONE):
+            chat = next(item for item in self.backend.chats()["chats"]
+                        if item["jid"] == "team@g.us")
+        self.assertEqual(chat["preview"], "@Casey check this out")
+
+    def test_a_notification_names_a_received_lid_mention(self) -> None:
+        # Notifications read the same preview the chat rail builds, so a
+        # mention resolved there must also be resolved in the popup body.
+        self._enable_notifications()
+        with closing(sqlite3.connect(self.store / "wacli.db")) as connection, connection:
+            connection.execute(
+                "INSERT INTO contacts VALUES (?, '15550005555', 'Casey', '', '', '', '', 1)",
+                [self.MENTIONED_PHONE])
+        self._arrive("team@g.us", "t3", 31, 5, text="@123456789012345 ship it now", sender="Sam")
+        with self._resolve_lid("123456789012345@lid", self.MENTIONED_PHONE):
+            result, sent = self._notify()
+        self.assertEqual(result["sent"], 1)
+        self.assertEqual(sent[0], ("Design team · 2 new", "Sam: @Casey ship it now"))
+
     def _insert_sticker(self, msg_id: str, ts: int, sha: bytes, path: str = "") -> None:
         with closing(sqlite3.connect(self.store / "wacli.db")) as connection, connection:
             connection.execute(

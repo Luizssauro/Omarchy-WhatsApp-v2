@@ -3365,6 +3365,9 @@ class Backend:
             raise OmaWhatsAppError("The local WhatsApp index could not be read.") from exc
         account = self.active
         acknowledged = self._account_state(preferences)["acknowledged_unread"]
+        # The chat rail and its notifications show this same preview, so one
+        # resolution pass here covers both surfaces.
+        mention_names = self._mention_names([str(row["preview"] or "") for row in rows])
         chats: list[dict[str, Any]] = []
         for row in rows:
             jid = str(row["jid"])
@@ -3395,7 +3398,9 @@ class Backend:
                 "timestamp": timestamp,
                 "last_message_id": str(row["last_message_id"] or "")[:256],
                 "last_media_type": str(row["last_media_type"] or "")[:32],
-                "preview": " ".join(contact_preview(str(row["preview"] or "")).split())[:512],
+                "preview": " ".join(contact_preview(
+                    self._with_mention_names(str(row["preview"] or ""), mention_names)
+                ).split())[:512],
                 "last_from_me": bool(row["last_from_me"]),
                 "last_status": last_delivery.get((jid, str(row["last_message_id"] or "")), ""),
                 "last_sender": " ".join(str(row["last_sender"] or "").split())[:MAX_NOTIFY_SENDER],
@@ -3437,11 +3442,15 @@ class Backend:
                     key = (lid, str(row["msg_id"] or ""))
                     status = self._delivery_status(connection, [key]).get(key, "") \
                         if bool(row["from_me"]) else ""
+                    preview_text = str(row["preview"] or "")
+                    mention_names = self._mention_names([preview_text])
                     chat.update({
                         "timestamp": int(row["ts"] or 0),
                         "last_message_id": str(row["msg_id"] or "")[:256],
                         "last_media_type": str(row["media"] or "")[:32],
-                        "preview": " ".join(contact_preview(str(row["preview"] or "")).split())[:512],
+                        "preview": " ".join(contact_preview(
+                            self._with_mention_names(preview_text, mention_names)
+                        ).split())[:512],
                         "last_from_me": bool(row["from_me"]),
                         "last_status": status,
                         "last_sender": " ".join(str(row["sender_name"] or "").split())[:MAX_NOTIFY_SENDER],
